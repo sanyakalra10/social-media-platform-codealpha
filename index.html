@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feed - Social Media</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container">
+      <h2 class="logo">🌐 Social Connect</h2>
+      <div class="nav-links">
+        <a href="index.html" class="active">Feed</a>
+        <a href="profile.html" title="Profile">😎</a>
+        <button onclick="logout()" class="btn-logout">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="container main-content">
+    
+    <!-- Left Sidebar - User Info -->
+    <aside class="sidebar">
+      <div class="user-card">
+        <img id="sidebarProfilePic" src="https://via.placeholder.com/80" alt="Profile">
+        <h3 id="sidebarUsername">Loading...</h3>
+        <p id="sidebarBio">Welcome to Social Connect!</p>
+        <div class="stats">
+          <div class="stat">
+            <strong id="sidebarPosts">0</strong>
+            <span>Posts</span>
+          </div>
+          <div class="stat">
+            <strong id="sidebarFollowers">0</strong>
+            <span>Followers</span>
+          </div>
+          <div class="stat">
+            <strong id="sidebarFollowing">0</strong>
+            <span>Following</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center - Feed -->
+    <main class="feed">
+      
+      <!-- Create Post -->
+      <div class="create-post">
+        <h3>Create a Post</h3>
+        <textarea id="postContent" placeholder="What's on your mind?" rows="3"></textarea>
+        <input type="text" id="postImage" placeholder="Image URL (optional)">
+        <button onclick="createPost()" class="btn-primary">Post</button>
+      </div>
+
+      <!-- Posts Feed -->
+      <div id="postsContainer">
+        <p class="loading">Loading posts...</p>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    // Check if user is logged in
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) {
+      window.location.href = 'login.html';
+    }
+
+    // Load user sidebar info
+    async function loadUserSidebar() {
+      try {
+        const response = await fetch(`${API_URL}/api/user/${currentUser.userId}`);
+        const user = await response.json();
+        
+        document.getElementById('sidebarProfilePic').src = user.profile_pic;
+        document.getElementById('sidebarUsername').textContent = user.username;
+        document.getElementById('sidebarBio').textContent = user.bio || 'No bio yet';
+        document.getElementById('sidebarPosts').textContent = user.posts_count;
+        document.getElementById('sidebarFollowers').textContent = user.followers;
+        document.getElementById('sidebarFollowing').textContent = user.following;
+      } catch (error) {
+        console.error('Error loading sidebar:', error);
+      }
+    }
+
+    // Load all posts
+    async function loadPosts() {
+      try {
+        const response = await fetch(`${API_URL}/api/posts`);
+        const posts = await response.json();
+        
+        const container = document.getElementById('postsContainer');
+        
+        if (posts.length === 0) {
+          container.innerHTML = '<p class="no-posts">No posts yet. Be the first to post!</p>';
+          return;
+        }
+        
+        container.innerHTML = posts.map(post => `
+          <div class="post-card">
+            <div class="post-header">
+              <img src="${post.profile_pic}" alt="${post.username}">
+              <div>
+                <h4>${post.username}</h4>
+                <span class="post-time">${formatTime(post.created_at)}</span>
+              </div>
+              ${post.user_id === currentUser.userId ? 
+                `<button onclick="deletePost(${post.id})" class="btn-delete">Delete</button>` : ''}
+            </div>
+            
+            <div class="post-content">
+              <p>${post.content}</p>
+              ${post.image ? `<img src="${post.image}" alt="Post image" class="post-image">` : ''}
+            </div>
+            
+            <div class="post-actions">
+              <button onclick="toggleLike(${post.id})" class="btn-like" id="likeBtn${post.id}">
+                ❤️ <span id="likeCount${post.id}">${post.likes}</span>
+              </button>
+              <button onclick="toggleComments(${post.id})" class="btn-comment">
+                💬 ${post.comment_count} Comments
+              </button>
+            </div>
+            
+            <!-- Comments Section -->
+            <div id="comments${post.id}" class="comments-section" style="display:none;">
+              <div class="add-comment">
+                <input type="text" id="commentInput${post.id}" placeholder="Add a comment...">
+                <button onclick="addComment(${post.id})" class="btn-primary">Send</button>
+              </div>
+              <div id="commentsList${post.id}" class="comments-list"></div>
+            </div>
+          </div>
+        `).join('');
+        
+        // Check liked posts
+        posts.forEach(post => checkIfLiked(post.id));
+        
+      } catch (error) {
+        console.error('Error loading posts:', error);
+        document.getElementById('postsContainer').innerHTML = 
+          '<p class="error">Error loading posts. Please refresh.</p>';
+      }
+    }
+
+    // Create new post
+    async function createPost() {
+      const content = document.getElementById('postContent').value.trim();
+      const image = document.getElementById('postImage').value.trim();
+      
+      if (!content) {
+        alert('Please write something!');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_URL}/api/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.userId,
+            content,
+            image
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          document.getElementById('postContent').value = '';
+          document.getElementById('postImage').value = '';
+          loadPosts();
+          loadUserSidebar();
+        }
+      } catch (error) {
+        alert('Error creating post');
+      }
+    }
+
+    // Delete post
+    async function deletePost(postId) {
+      if (!confirm('Delete this post?')) return;
+      
+      try {
+        await fetch(`${API_URL}/api/posts/${postId}`, { method: 'DELETE' });
+        loadPosts();
+        loadUserSidebar();
+      } catch (error) {
+        alert('Error deleting post');
+      }
+    }
+
+    // Toggle like
+    async function toggleLike(postId) {
+      try {
+        const response = await fetch(`${API_URL}/api/posts/${postId}/like`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.userId })
+        });
+        
+        const data = await response.json();
+        
+        // Update UI
+        const post = await fetch(`${API_URL}/api/posts`).then(r => r.json());
+        const updatedPost = post.find(p => p.id === postId);
+        document.getElementById(`likeCount${postId}`).textContent = updatedPost.likes;
+        
+        checkIfLiked(postId);
+        
+      } catch (error) {
+        console.error('Error toggling like:', error);
+      }
+    }
+
+    // Check if user liked post
+    async function checkIfLiked(postId) {
+      try {
+        const response = await fetch(`${API_URL}/api/posts/${postId}/liked/${currentUser.userId}`);
+        const data = await response.json();
+        
+        const btn = document.getElementById(`likeBtn${postId}`);
+        if (btn) {
+          btn.style.color = data.liked ? '#e74c3c' : '#555';
+          btn.style.fontWeight = data.liked ? 'bold' : 'normal';
+        }
+      } catch (error) {
+        console.error('Error checking like:', error);
+      }
+    }
+
+    // Toggle comments section
+    async function toggleComments(postId) {
+      const section = document.getElementById(`comments${postId}`);
+      
+      if (section.style.display === 'none') {
+        section.style.display = 'block';
+        loadComments(postId);
+      } else {
+        section.style.display = 'none';
+      }
+    }
+
+    // Load comments
+    async function loadComments(postId) {
+      try {
+        const response = await fetch(`${API_URL}/api/posts/${postId}/comments`);
+        const comments = await response.json();
+        
+        const list = document.getElementById(`commentsList${postId}`);
+        
+        if (comments.length === 0) {
+          list.innerHTML = '<p class="no-comments">No comments yet</p>';
+          return;
+        }
+        
+        list.innerHTML = comments.map(comment => `
+          <div class="comment">
+            <img src="${comment.profile_pic}" alt="${comment.username}">
+            <div>
+              <strong>${comment.username}</strong>
+              <p>${comment.comment}</p>
+              <span class="comment-time">${formatTime(comment.created_at)}</span>
+            </div>
+            ${comment.user_id === currentUser.userId ? 
+              `<button onclick="deleteComment(${comment.id}, ${postId})" class="btn-delete-small">×</button>` : ''}
+          </div>
+        `).join('');
+        
+      } catch (error) {
+        console.error('Error loading comments:', error);
+      }
+    }
+
+    // Add comment
+    async function addComment(postId) {
+      const input = document.getElementById(`commentInput${postId}`);
+      const comment = input.value.trim();
+      
+      if (!comment) return;
+      
+      try {
+        await fetch(`${API_URL}/api/posts/${postId}/comments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.userId,
+            comment
+          })
+        });
+        
+        input.value = '';
+        loadComments(postId);
+        loadPosts(); // Update comment count
+        
+      } catch (error) {
+        alert('Error adding comment');
+      }
+    }
+
+    // Delete comment
+    async function deleteComment(commentId, postId) {
+      try {
+        await fetch(`${API_URL}/api/comments/${commentId}`, { method: 'DELETE' });
+        loadComments(postId);
+        loadPosts();
+      } catch (error) {
+        alert('Error deleting comment');
+      }
+    }
+
+    // Logout
+    function logout() {
+      localStorage.removeItem('currentUser');
+      window.location.href = 'login.html';
+    }
+
+    // Format time
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    // Initialize
+    loadUserSidebar();
+    loadPosts();
+  </script>
+
+</body>
+</html>

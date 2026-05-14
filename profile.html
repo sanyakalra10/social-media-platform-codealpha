@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile - Social Media</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container">
+      <h2 class="logo">🌐 Social Connect</h2>
+      <div class="nav-links">
+        <a href="index.html">Feed</a>
+        <a href="profile.html" class="active" title="Profile">👤</a>
+        <button onclick="logout()" class="btn-logout">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Profile Section -->
+  <div class="container profile-container">
+    
+    <!-- Profile Header -->
+    <div class="profile-header">
+      <img id="profilePic" src="https://via.placeholder.com/150" alt="Profile">
+      <div class="profile-info">
+        <h2 id="profileUsername">Loading...</h2>
+        <p id="profileEmail">email@example.com</p>
+        <p id="profileBio">No bio yet</p>
+        
+        <div class="profile-stats">
+          <div class="stat">
+            <strong id="profilePosts">0</strong>
+            <span>Posts</span>
+          </div>
+          <div class="stat">
+            <strong id="profileFollowers">0</strong>
+            <span>Followers</span>
+          </div>
+          <div class="stat">
+            <strong id="profileFollowing">0</strong>
+            <span>Following</span>
+          </div>
+        </div>
+        
+        <button onclick="showEditModal()" class="btn-primary">Edit Profile</button>
+      </div>
+    </div>
+
+    <!-- User Posts -->
+    <div class="user-posts">
+      <h3>My Posts</h3>
+      <div id="userPostsContainer">
+        <p class="loading">Loading your posts...</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Edit Profile Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <span onclick="closeEditModal()" class="close">&times;</span>
+      <h2>Edit Profile</h2>
+      <form onsubmit="updateProfile(event)">
+        <label>Bio</label>
+        <textarea id="editBio" rows="3" placeholder="Tell us about yourself"></textarea>
+        
+        <button type="submit" class="btn-primary">Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) {
+      window.location.href = 'login.html';
+    }
+
+    // Load user profile
+    async function loadProfile() {
+      try {
+        const response = await fetch(`${API_URL}/api/user/${currentUser.userId}`);
+        const user = await response.json();
+        
+        document.getElementById('profilePic').src = user.profile_pic;
+        document.getElementById('profileUsername').textContent = user.username;
+        document.getElementById('profileEmail').textContent = user.email;
+        document.getElementById('profileBio').textContent = user.bio || 'No bio yet';
+        document.getElementById('profilePosts').textContent = user.posts_count;
+        document.getElementById('profileFollowers').textContent = user.followers;
+        document.getElementById('profileFollowing').textContent = user.following;
+        
+        // Pre-fill edit form
+        document.getElementById('editBio').value = user.bio;
+        
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    }
+
+    // Load user posts
+    async function loadUserPosts() {
+      try {
+        const response = await fetch(`${API_URL}/api/posts/user/${currentUser.userId}`);
+        const posts = await response.json();
+        
+        const container = document.getElementById('userPostsContainer');
+        
+        if (posts.length === 0) {
+          container.innerHTML = '<p class="no-posts">You haven\'t posted anything yet</p>';
+          return;
+        }
+        
+        container.innerHTML = posts.map(post => `
+          <div class="post-card">
+            <div class="post-header">
+              <img src="${post.profile_pic}" alt="${post.username}">
+              <div>
+                <h4>${post.username}</h4>
+                <span class="post-time">${formatTime(post.created_at)}</span>
+              </div>
+              <button onclick="deletePost(${post.id})" class="btn-delete">Delete</button>
+            </div>
+            
+            <div class="post-content">
+              <p>${post.content}</p>
+              ${post.image ? `<img src="${post.image}" alt="Post image" class="post-image">` : ''}
+            </div>
+            
+            <div class="post-stats">
+              <span>❤️ ${post.likes} Likes</span>
+              <span>💬 ${post.comment_count} Comments</span>
+            </div>
+          </div>
+        `).join('');
+        
+      } catch (error) {
+        console.error('Error loading posts:', error);
+      }
+    }
+
+    // Delete post
+    async function deletePost(postId) {
+      if (!confirm('Delete this post?')) return;
+      
+      try {
+        await fetch(`${API_URL}/api/posts/${postId}`, { method: 'DELETE' });
+        loadProfile();
+        loadUserPosts();
+      } catch (error) {
+        alert('Error deleting post');
+      }
+    }
+
+    // Show edit modal
+    function showEditModal() {
+      document.getElementById('editModal').style.display = 'block';
+    }
+
+    // Close edit modal
+    function closeEditModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    // Update profile
+    async function updateProfile(e) {
+      e.preventDefault();
+      
+      const bio = document.getElementById('editBio').value.trim();
+      
+      try {
+        await fetch(`${API_URL}/api/user/${currentUser.userId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_pic: 'https://via.placeholder.com/150', bio })
+        });
+        
+        alert('Profile updated!');
+        closeEditModal();
+        loadProfile();
+        loadUserPosts();
+        
+      } catch (error) {
+        alert('Error updating profile');
+      }
+    }
+
+    // Format time
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString('en-IN', { 
+        day: 'numeric', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    }
+
+    // Logout
+    function logout() {
+      localStorage.removeItem('currentUser');
+      window.location.href = 'login.html';
+    }
+
+    // Initialize
+    loadProfile();
+    loadUserPosts();
+  </script>
+
+</body>
+</html>
